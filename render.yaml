@@ -1,0 +1,12 @@
+# Render Blueprint for AI Ingredient Co-Pilot API
+services:
+  - type: web
+    name: ingredient-copilot-api
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false  # You'll add this manually in Render dashboard
+      - key: PYTHON_VERSION
+        value: 3.11.4
