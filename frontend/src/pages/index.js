@@ -1,0 +1,6 @@
+export { default as HomePage } from './HomePage'
+export { default as HistoryPage } from './HistoryPage'
+export { default as AnalysisPage } from './AnalysisPage'
+export { default as SummaryPage } from './SummaryPage'
+export { default as LoginPage } from './LoginPage'
+export { default as RegisterPage } from './RegisterPage'

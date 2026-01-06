@@ -56,3 +56,42 @@ class AnalyzeImageRequest(BaseModel):
         None,
         description="Optional context about user preferences, allergies, or dietary goals"
     )
+
+
+class IngredientInsightInput(BaseModel):
+    """Input model for ingredient insight."""
+    name: str
+    concern_level: str
+    brief: str
+
+
+class AnalysisResultInput(BaseModel):
+    """Input model for analysis result to save to history."""
+    summary: str
+    key_concerns: List[str] = []
+    positives: List[str] = []
+    confidence_level: str = "medium"
+    uncertainty_notes: Optional[str] = None
+    ingredient_insights: List[IngredientInsightInput] = []
+    reasoning_time_ms: Optional[int] = None
+
+
+class SaveHistoryRequest(BaseModel):
+    """Request model for saving analysis to history."""
+    
+    input_type: Literal["ocr_text", "ingredient_list", "free_text", "image"] = Field(
+        ...,
+        description="Type of input that was analyzed"
+    )
+    content: Union[str, List[str]] = Field(
+        ...,
+        description="The original content that was analyzed"
+    )
+    user_context: Optional[str] = Field(
+        None,
+        description="User context provided during analysis"
+    )
+    result: AnalysisResultInput = Field(
+        ...,
+        description="The analysis result to save"
+    )

@@ -8,7 +8,7 @@ to provide human-level health insights with intent-first reasoning.
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, File, Form, UploadFile, HTTPException
+from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -16,6 +16,10 @@ from app.config import get_settings
 from app.models.request import AnalyzeTextRequest
 from app.models.response import AnalyzeResponse, HealthResponse, ErrorResponse
 from app.services.analyzer import get_analyzer
+from app.routes.auth import router as auth_router, get_optional_user
+from app.routes.history import router as history_router
+from app.database.mongodb import connect_to_mongodb, close_mongodb_connection
+from app.database.analysis_repository import get_analysis_history_repository
 
 
 # Lifespan handler for startup/shutdown
@@ -29,9 +33,13 @@ async def lifespan(app: FastAPI):
     else:
         print("✅ Gemini API configured successfully")
     
+    # Connect to MongoDB
+    await connect_to_mongodb()
+    
     yield
     
-    # Shutdown: cleanup if needed
+    # Shutdown: cleanup
+    await close_mongodb_connection()
     print("👋 Shutting down...")
 
 
@@ -79,6 +87,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Include auth routes
+app.include_router(auth_router)
+
+# Include history routes
+app.include_router(history_router)
+
 
 @app.get("/", response_model=HealthResponse, tags=["Health"])
 async def health_check():
@@ -106,7 +120,10 @@ async def health_check():
         500: {"model": ErrorResponse, "description": "Analysis failed"}
     }
 )
-async def analyze_text(request: AnalyzeTextRequest):
+async def analyze_text(
+    request: AnalyzeTextRequest,
+    current_user = Depends(get_optional_user)
+):
     """
     Analyze ingredients from text input.
     
@@ -117,10 +134,25 @@ async def analyze_text(request: AnalyzeTextRequest):
     
     Optional `user_context` can provide information about allergies,
     dietary goals, or specific concerns for personalized analysis.
+    
+    If authenticated, the analysis will be saved to history.
     """
     try:
         analyzer = get_analyzer()
         result = await analyzer.analyze_text(request)
+        
+        # Save to history if user is authenticated
+        if current_user:
+            content = request.content if isinstance(request.content, str) else ", ".join(request.content)
+            repo = get_analysis_history_repository()
+            await repo.save_analysis(
+                user_id=current_user.id,
+                input_type=request.input_type,
+                content=content,
+                user_context=request.user_context,
+                result=result
+            )
+        
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -141,7 +173,8 @@ async def analyze_text(request: AnalyzeTextRequest):
 )
 async def analyze_image(
     image: UploadFile = File(..., description="Product label or ingredient list image"),
-    user_context: Optional[str] = Form(None, description="Optional user context for personalized analysis")
+    user_context: Optional[str] = Form(None, description="Optional user context for personalized analysis"),
+    authorization: Optional[str] = Header(None)
 ):
     """
     Analyze ingredients from a product image.
@@ -153,7 +186,12 @@ async def analyze_image(
     3. Return structured insights
     
     Supported formats: JPEG, PNG, WebP, GIF
+    
+    If authenticated, the analysis will be saved to history.
     """
+    # Get current user if authenticated
+    current_user = await get_optional_user(authorization)
+    
     # Validate file type
     if not image.content_type:
         raise HTTPException(status_code=400, detail="Could not determine image type")
@@ -176,6 +214,18 @@ async def analyze_image(
         # Analyze
         analyzer = get_analyzer()
         result = await analyzer.analyze_image(image_bytes, user_context)
+        
+        # Save to history if user is authenticated
+        if current_user:
+            repo = get_analysis_history_repository()
+            await repo.save_analysis(
+                user_id=current_user.id,
+                input_type="image",
+                content=f"Image: {image.filename or 'uploaded_image'}",
+                user_context=user_context,
+                result=result
+            )
+        
         return result
         
     except HTTPException:

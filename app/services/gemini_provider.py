@@ -5,6 +5,7 @@ Handles both text and vision-based analysis using Google's Gemini API.
 
 import json
 import time
+import base64
 from typing import Optional
 import google.generativeai as genai
 
@@ -40,7 +41,7 @@ class GeminiProvider:
         try:
             response = self.text_model.generate_content(
                 prompt,
-                generation_config=genai.GenerationConfig(
+                generation_config=genai.types.GenerationConfig(
                     temperature=0.7,
                     max_output_tokens=2048,
                 )
@@ -69,13 +70,13 @@ class GeminiProvider:
         try:
             # Create image part for Gemini
             image_part = {
-                "mime_type": "image/jpeg",  # Will be detected/converted as needed
-                "data": image_bytes
+                "mime_type": "image/jpeg",
+                "data": base64.standard_b64encode(image_bytes).decode("utf-8")
             }
             
             response = self.vision_model.generate_content(
                 [prompt, image_part],
-                generation_config=genai.GenerationConfig(
+                generation_config=genai.types.GenerationConfig(
                     temperature=0.7,
                     max_output_tokens=2048,
                 )
